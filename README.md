@@ -6,7 +6,10 @@ This is a personal library used for my own projects, This is only intended to wo
 
 This package will probably work for other services that implement similar systems, such as Slack, but is only intended to support Discord currently.
 
-## Usage
+## Installation
+`cargo add blurple_hook`
+
+## Example
 
 ```rust
 use blurple_hook::{Webhook, Embed, Field, ColourType};

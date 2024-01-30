@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Discord webhook implementation in Rust"
 license = "WTFPL"
+repository = "https://github.com/0xlunar/blurple_hook"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
