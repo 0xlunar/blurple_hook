@@ -1,6 +1,6 @@
 [package]
 name = "blurple_hook"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Discord webhook implementation in Rust"
 license = "WTFPL"
@@ -14,3 +14,4 @@ reqwest = "0.11.23"
 serde = { version = "1.0.196", features = ["derive"] }
 serde_json = "1.0.112"
 anyhow = "1.0.79"
+tokio = { version = "1.35.1", features = ["full"] }
