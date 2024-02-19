@@ -5,7 +5,7 @@ use std::usize;
 use anyhow::format_err;
 
 #[cfg(feature = "queue")]
-mod queue {
+pub mod queue {
     use std::collections::VecDeque;
     use std::sync::Arc;
     use std::time::Duration;
