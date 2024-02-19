@@ -580,9 +580,7 @@ mod tests {
     #[tokio::test]
     async fn test_queue() {
         use crate::queue::WebhookQueue;
-        use std::collections::VecDeque;
         use std::sync::Arc;
-        use tokio::sync::Mutex;
 
         let queue = WebhookQueue::new();
 
@@ -603,7 +601,7 @@ mod tests {
             assert_eq!(webhooks.len(), 5, "Len is not 5, {}", webhooks.len());
         }
 
-        queue.start().await;
+        let _ = queue.start().await;
 
         let webhooks = Arc::clone(&webhooks);
         let webhooks = webhooks.lock().await;
