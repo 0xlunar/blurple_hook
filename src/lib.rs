@@ -4,14 +4,83 @@ use serde::{Deserialize, Serialize};
 use std::usize;
 use anyhow::format_err;
 
+#[cfg(feature = "queue")]
+mod queue {
+    use std::collections::VecDeque;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::Mutex;
+    use tokio::task::JoinHandle;
+    use tokio::time::Instant;
+    use crate::Webhook;
+
+    pub struct WebhookQueue {
+        pub webhooks: Arc<Mutex<VecDeque<Webhook>>>,
+    }
+
+    impl WebhookQueue {
+        pub fn new() -> Self {
+            Self {
+                webhooks: Arc::new(Mutex::new(VecDeque::new())),
+            }
+        }
+
+        pub async fn enqueue(queue: Arc<Mutex<VecDeque<Webhook>>>, webhook: Webhook) {
+            let mut q = queue.lock().await;
+            q.push_front(webhook);
+        }
+
+        pub async fn enqueue_multi(queue: Arc<Mutex<VecDeque<Webhook>>>, webhooks: Vec<Webhook>) {
+            let mut q = queue.lock().await;
+            for webhook in webhooks {
+                q.push_front(webhook);
+            }
+        }
+
+        pub fn start(self) -> JoinHandle<Self> {
+            tokio::task::spawn(async move {
+                loop {
+                    let (one, two) = {
+                        let mut whs = self.webhooks.as_ref().lock().await;
+                        let one = whs.pop_back();
+                        let two = whs.pop_back();
+                        (one, two)
+                    };
+
+                    if cfg!(test) {
+                        if one.is_none() && two.is_none() {
+                            return self;
+                        }
+                    }
+
+                    // only 2 so sequential is fine
+                    let _ = match one {
+                        Some(w) => w.send().await,
+                        None => Ok(()),
+                    };
+
+                    let _ = match two {
+                        Some(w) => w.send().await,
+                        None => Ok(()),
+                    };
+
+                    // we can send 2 webhooks every 2 seconds,
+                    tokio::time::sleep_until(Instant::now() + Duration::from_millis(2000)).await;
+                }
+            })
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Webhook<'a> {
+pub struct Webhook {
     #[serde(skip)]
-    webhook_url: &'a str,
-    content: Option<&'a str>,
-    username: Option<&'a str>,
-    avatar_url: Option<&'a str>,
-    embeds: Vec<Embed<'a>>,
+    webhook_url: String,
+    content: Option<String>,
+    username: Option<String>,
+    avatar_url: Option<String>,
+    embeds: Vec<Embed>,
     components: Vec<Component>,
 }
 
@@ -19,76 +88,76 @@ pub struct Webhook<'a> {
 struct Component {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Embed<'a> {
-    title: Option<&'a str>,
+pub struct Embed {
+    title: Option<String>,
     #[serde(rename = "type")]
-    _type: &'a str,
-    description: Option<&'a str>,
-    url: Option<&'a str>,
+    _type: String,
+    description: Option<String>,
+    url: Option<String>,
     timestamp: Option<String>,
     color: Option<usize>,
-    footer: Option<Footer<'a>>,
-    image: Option<Image<'a>>,
-    thumbnail: Option<Thumbnail<'a>>,
-    video: Option<Video<'a>>,
-    provider: Option<Provider<'a>>,
-    author: Option<Author<'a>>,
-    fields: Vec<Field<'a>>,
+    footer: Option<Footer>,
+    image: Option<Image>,
+    thumbnail: Option<Thumbnail>,
+    video: Option<Video>,
+    provider: Option<Provider>,
+    author: Option<Author>,
+    fields: Vec<Field>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Footer<'a> {
-    text: &'a str,
-    icon_url: Option<&'a str>,
-    proxy_icon_url: Option<&'a str>,
+struct Footer {
+    text: String,
+    icon_url: Option<String>,
+    proxy_icon_url: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Image<'a> {
-    url: &'a str,
-    proxy_url: Option<&'a str>,
+struct Image {
+    url: String,
+    proxy_url: Option<String>,
     height: Option<usize>,
     width: Option<usize>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Thumbnail<'a> {
-    url: &'a str,
-    proxy_url: Option<&'a str>,
+struct Thumbnail {
+    url: String,
+    proxy_url: Option<String>,
     height: Option<usize>,
     width: Option<usize>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Video<'a> {
-    url: &'a str,
-    proxy_url: Option<&'a str>,
+struct Video {
+    url: String,
+    proxy_url: Option<String>,
     height: Option<usize>,
     width: Option<usize>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Provider<'a> {
-    name: Option<&'a str>,
-    url: Option<&'a str>,
+struct Provider {
+    name: Option<String>,
+    url: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-struct Author<'a> {
-    name: &'a str,
-    url: Option<&'a str>,
-    icon_url: Option<&'a str>,
-    proxy_icon_url: Option<&'a str>,
+struct Author {
+    name: String,
+    url: Option<String>,
+    icon_url: Option<String>,
+    proxy_icon_url: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Field<'a> {
-    name: &'a str,
-    value: &'a str,
+pub struct Field {
+    name: String,
+    value: String,
     inline: bool,
 }
-pub enum ColourType<'a> {
-    Hex(&'a str),
+pub enum ColourType<S: AsRef<str>> {
+    Hex(S),
     Integer(usize),
 }
 
-impl<'a> Webhook<'a> {
-    pub fn new(webhook_url: &str) -> Webhook {
+impl Webhook {
+    pub fn new<S: AsRef<str>>(webhook_url: S) -> Webhook {
         Webhook {
-            webhook_url,
+            webhook_url: webhook_url.as_ref().to_string(),
             content: None,
             username: None,
             avatar_url: None,
@@ -96,19 +165,19 @@ impl<'a> Webhook<'a> {
             components: Vec::new(),
         }
     }
-    pub fn set_content(mut self, content: &'a str) -> Self {
-        self.content = Some(content);
+    pub fn set_content<S: AsRef<str>>(mut self, content: S) -> Self {
+        self.content = Some(content.as_ref().to_string());
         self
     }
-    pub fn set_username(mut self, username: &'a str) -> Self {
-        self.username = Some(username);
+    pub fn set_username<S: AsRef<str>>(mut self, username: S) -> Self {
+        self.username = Some(username.as_ref().to_string());
         self
     }
-    pub fn set_avatar_url(mut self, url: &'a str) -> Self {
-        self.avatar_url = Some(url);
+    pub fn set_avatar_url<S: AsRef<str>>(mut self, url: S) -> Self {
+        self.avatar_url = Some(url.as_ref().to_string());
         self
     }
-    pub fn add_embed(mut self, embed: Embed<'a>) -> Self {
+    pub fn add_embed(mut self, embed: Embed) -> Self {
         self.embeds.push(embed);
         self
     }
@@ -136,11 +205,11 @@ impl<'a> Webhook<'a> {
     }
 }
 
-impl<'a> Embed<'a> {
-    pub fn new() -> Embed<'a> {
+impl Embed {
+    pub fn new() -> Embed {
         Embed {
             title: None,
-            _type: "rich",
+            _type: "rich".to_string(),
             description: None,
             url: None,
             timestamp: None,
@@ -154,16 +223,16 @@ impl<'a> Embed<'a> {
             fields: Vec::new(),
         }
     }
-    pub fn set_title(mut self, title: &'a str) -> Self {
-        self.title = Some(title);
+    pub fn set_title<S: AsRef<str>>(mut self, title: S) -> Self {
+        self.title = Some(title.as_ref().to_string());
         self
     }
-    pub fn set_description(mut self, description: &'a str) -> Self {
-        self.description = Some(description);
+    pub fn set_description<S: AsRef<str>>(mut self, description: S) -> Self {
+        self.description = Some(description.as_ref().to_string());
         self
     }
-    pub fn set_url(mut self, url: &'a str) -> Self {
-        self.url = Some(url);
+    pub fn set_url<S: AsRef<str>>(mut self, url: S) -> Self {
+        self.url = Some(url.as_ref().to_string());
         self
     }
     pub fn set_timestamp(mut self, timestamp: Option<&std::time::SystemTime>) -> Self {
@@ -175,10 +244,10 @@ impl<'a> Embed<'a> {
         self.timestamp = Some(timestamp);
         self
     }
-    pub fn set_colour(mut self, colour: ColourType<'a>) -> Self {
+    pub fn set_colour<S: AsRef<str>>(mut self, colour: ColourType<S>) -> Self {
         let colour: usize = match colour {
             ColourType::Hex(hex) => usize::from_str_radix(
-                hex
+                hex.as_ref()
                     .trim_start_matches('#')
                     .trim_start_matches("0x"),
                 16,
@@ -190,32 +259,37 @@ impl<'a> Embed<'a> {
         self.color = Some(colour);
         self
     }
-    pub fn set_color(self, color: ColourType<'a>) -> Self {
+    pub fn set_color<S: AsRef<str>>(self, color: ColourType<S>) -> Self {
         self.set_colour(color)
     }
-    pub fn set_footer(
+    pub fn set_footer<A: AsRef<str>, B: AsRef<str>, C: AsRef<str>>(
         mut self,
-        text: &'a str,
-        icon_url: Option<&'a str>,
-        proxy_icon_url: Option<&'a str>,
+        text: A,
+        icon_url: Option<B>,
+        proxy_icon_url: Option<C>,
     ) -> Self {
+        let icon_url = icon_url.map(|n| n.as_ref().to_string());
+        let proxy_icon_url = proxy_icon_url.map(|n| n.as_ref().to_string());
+
         self.footer = Some(Footer {
-            text,
+            text: text.as_ref().to_string(),
             icon_url,
             proxy_icon_url,
         });
 
         self
     }
-    pub fn set_image(
+    pub fn set_image<A: AsRef<str>, B: AsRef<str>>(
         mut self,
-        url: &'a str,
-        proxy_url: Option<&'a str>,
+        url: A,
+        proxy_url: Option<B>,
         height: Option<usize>,
         width: Option<usize>,
     ) -> Self {
+        let proxy_url = proxy_url.map(|p| p.as_ref().to_string());
+
         self.image = Some(Image {
-            url,
+            url: url.as_ref().to_string(),
             proxy_url,
             height,
             width,
@@ -223,15 +297,17 @@ impl<'a> Embed<'a> {
 
         self
     }
-    pub fn set_thumbnail(
+    pub fn set_thumbnail<A: AsRef<str>, B: AsRef<str>>(
         mut self,
-        url: &'a str,
-        proxy_url: Option<&'a str>,
+        url: A,
+        proxy_url: Option<B>,
         height: Option<usize>,
         width: Option<usize>,
     ) -> Self {
+        let proxy_url = proxy_url.map(|p| p.as_ref().to_string());
+
         self.thumbnail = Some(Thumbnail {
-            url,
+            url: url.as_ref().to_string(),
             proxy_url,
             height,
             width,
@@ -239,15 +315,17 @@ impl<'a> Embed<'a> {
 
         self
     }
-    pub fn set_video(
+    pub fn set_video<A: AsRef<str>, B: AsRef<str>>(
         mut self,
-        url: &'a str,
-        proxy_url: Option<&'a str>,
+        url: A,
+        proxy_url: Option<B>,
         height: Option<usize>,
         width: Option<usize>,
     ) -> Self {
+        let proxy_url = proxy_url.map(|p| p.as_ref().to_string());
+
         self.video = Some(Video {
-            url,
+            url: url.as_ref().to_string(),
             proxy_url,
             height,
             width,
@@ -255,19 +333,24 @@ impl<'a> Embed<'a> {
 
         self
     }
-    pub fn set_provider(mut self, name: Option<&'a str>, url: Option<&'a str>) -> Self {
+    pub fn set_provider<A: AsRef<str>, B: AsRef<str>>(mut self, name: Option<A>, url: Option<B>) -> Self {
+        let name = name.map(|n| n.as_ref().to_string());
+        let url = url.map(|n| n.as_ref().to_string());
         self.provider = Some(Provider { name, url });
         self
     }
-    pub fn set_author(
+    pub fn set_author<A: AsRef<str>, B: AsRef<str>, C: AsRef<str>, D: AsRef<str>>(
         mut self,
-        name: &'a str,
-        url: Option<&'a str>,
-        icon_url: Option<&'a str>,
-        proxy_icon_url: Option<&'a str>,
+        name: A,
+        url: Option<B>,
+        icon_url: Option<C>,
+        proxy_icon_url: Option<D>,
     ) -> Self {
+        let url = url.map(|n| n.as_ref().to_string());
+        let icon_url = icon_url.map(|n| n.as_ref().to_string());
+        let proxy_icon_url = proxy_icon_url.map(|n| n.as_ref().to_string());
         self.author = Some(Author {
-            name,
+            name: name.as_ref().to_string(),
             url,
             icon_url,
             proxy_icon_url,
@@ -275,10 +358,10 @@ impl<'a> Embed<'a> {
 
         self
     }
-    pub fn add_field(mut self, name: &'a str, value: &'a str, inline: bool) -> Self {
+    pub fn add_field<A: AsRef<str>, B: AsRef<str>>(mut self, name: A, value: B, inline: bool) -> Self {
         let field = Field {
-            name,
-            value,
+            name: name.as_ref().to_string(),
+            value: value.as_ref().to_string(),
             inline,
         };
 
@@ -287,7 +370,7 @@ impl<'a> Embed<'a> {
         self
     }
 
-    pub fn add_fields(mut self, fields: &mut Vec<Field<'a>>) -> Self {
+    pub fn add_fields(mut self, fields: &mut Vec<Field>) -> Self {
         self.fields.append(fields);
         self
     }
@@ -302,41 +385,41 @@ mod tests {
     fn create_embed() {
         let embed = Embed::new()
             .set_colour(ColourType::Hex("#FFFFFF"))
-            .set_author("Author Name", Some("https://example.com/"), None, None)
-            .set_thumbnail("https://example.com/", None, None, None)
+            .set_author("Author Name", Some("https://example.com/"), None::<String>, None::<String>)
+            .set_thumbnail("https://example.com/", None::<String>, None, None)
             .set_title("Example")
             .set_url("https://example.com/")
-            .set_footer("Footer Text", None, None)
+            .set_footer("Footer Text", None::<String>, None::<String>)
             .set_description("Description Text")
             .add_field("Example 1", "Value 1", true)
             .add_fields(&mut vec![
                 Field {
-                    name: "Example 2",
-                    value: "Value 2",
+                    name: "Example 2".to_string(),
+                    value: "Value 2".to_string(),
                     inline: false,
                 },
                 Field {
-                    name: "Example 3",
-                    value: "Value 3",
+                    name: "Example 3".to_string(),
+                    value: "Value 3".to_string(),
                     inline: false,
                 }
             ]);
 
         let expected = Embed {
-            title: Some("Example"),
-            _type: "rich",
-            description: Some("Description Text"),
-            url: Some("https://example.com/"),
+            title: Some("Example".to_string()),
+            _type: "rich".to_string(),
+            description: Some("Description Text".to_string()),
+            url: Some("https://example.com/".to_string()),
             timestamp: None,
             color: Some(16777215),
             footer: Some(Footer {
-                text: "Footer Text",
+                text: "Footer Text".to_string(),
                 icon_url: None,
                 proxy_icon_url: None,
             }),
             image: None,
             thumbnail: Some(Thumbnail {
-                url: "https://example.com/",
+                url: "https://example.com/".to_string(),
                 proxy_url: None,
                 height: None,
                 width: None,
@@ -344,25 +427,25 @@ mod tests {
             video: None,
             provider: None,
             author: Some(Author {
-                name: "Author Name",
-                url: Some("https://example.com/"),
+                name: "Author Name".to_string(),
+                url: Some("https://example.com/".to_string()),
                 icon_url: None,
                 proxy_icon_url: None,
             }),
             fields: vec![
                 Field {
-                    name: "Example 1",
-                    value: "Value 1",
+                    name: "Example 1".to_string(),
+                    value: "Value 1".to_string(),
                     inline: true,
                 },
                 Field {
-                    name: "Example 2",
-                    value: "Value 2",
+                    name: "Example 2".to_string(),
+                    value: "Value 2".to_string(),
                     inline: false,
                 },
                 Field {
-                    name: "Example 3",
-                    value: "Value 3",
+                    name: "Example 3".to_string(),
+                    value: "Value 3".to_string(),
                     inline: false,
                 }
             ],
@@ -378,22 +461,22 @@ mod tests {
 
         let embed = Embed::new()
             .set_colour(ColourType::Hex("#FFFFFF"))
-            .set_author("Author Name", Some("https://example.com/"), None, None)
-            .set_thumbnail("https://example.com/", None, None, None)
+            .set_author("Author Name", Some("https://example.com/"), None::<String>, None::<String>)
+            .set_thumbnail("https://example.com/", None::<String>, None, None)
             .set_title("Example")
             .set_url("https://example.com/")
-            .set_footer("Footer Text", None, None)
+            .set_footer("Footer Text", None::<String>, None::<String>)
             .set_description("Description Text")
             .add_field("Example 1", "Value 1", true)
             .add_fields(&mut vec![
                 Field {
-                    name: "Example 2",
-                    value: "Value 2",
+                    name: "Example 2".to_string(),
+                    value: "Value 2".to_string(),
                     inline: false,
                 },
                 Field {
-                    name: "Example 3",
-                    value: "Value 3",
+                    name: "Example 3".to_string(),
+                    value: "Value 3".to_string(),
                     inline: false,
                 }
             ]);
@@ -401,26 +484,26 @@ mod tests {
         let webhook = webhook.add_embed(embed);
 
         let expected = Webhook {
-            webhook_url: "https://discord.com/webhook",
-            content: Some("Content Text"),
-            username: Some("Test Username"),
+            webhook_url: "https://discord.com/webhook".to_string(),
+            content: Some("Content Text".to_string()),
+            username: Some("Test Username".to_string()),
             avatar_url: None,
             embeds: vec![
                 Embed {
-                    title: Some("Example"),
-                    _type: "rich",
-                    description: Some("Description Text"),
-                    url: Some("https://example.com/"),
+                    title: Some("Example".to_string()),
+                    _type: "rich".to_string(),
+                    description: Some("Description Text".to_string()),
+                    url: Some("https://example.com/".to_string()),
                     timestamp: None,
                     color: Some(16777215),
                     footer: Some(Footer {
-                        text: "Footer Text",
+                        text: "Footer Text".to_string(),
                         icon_url: None,
                         proxy_icon_url: None,
                     }),
                     image: None,
                     thumbnail: Some(Thumbnail {
-                        url: "https://example.com/",
+                        url: "https://example.com/".to_string(),
                         proxy_url: None,
                         height: None,
                         width: None,
@@ -428,25 +511,25 @@ mod tests {
                     video: None,
                     provider: None,
                     author: Some(Author {
-                        name: "Author Name",
-                        url: Some("https://example.com/"),
+                        name: "Author Name".to_string(),
+                        url: Some("https://example.com/".to_string()),
                         icon_url: None,
                         proxy_icon_url: None,
                     }),
                     fields: vec![
                         Field {
-                            name: "Example 1",
-                            value: "Value 1",
+                            name: "Example 1".to_string(),
+                            value: "Value 1".to_string(),
                             inline: true,
                         },
                         Field {
-                            name: "Example 2",
-                            value: "Value 2",
+                            name: "Example 2".to_string(),
+                            value: "Value 2".to_string(),
                             inline: false,
                         },
                         Field {
-                            name: "Example 3",
-                            value: "Value 3",
+                            name: "Example 3".to_string(),
+                            value: "Value 3".to_string(),
                             inline: false,
                         }
                     ],
@@ -472,18 +555,18 @@ mod tests {
             .add_field("Example 1", "Value 1", true)
             .add_fields(&mut vec![
                 Field {
-                    name: "Example 2",
-                    value: "Value 2",
+                    name: "Example 2".to_string(),
+                    value: "Value 2".to_string(),
                     inline: true,
                 },
                 Field {
-                    name: "Example 3",
-                    value: "Value 3",
+                    name: "Example 3".to_string(),
+                    value: "Value 3".to_string(),
                     inline: false,
                 },
                 Field {
-                    name: "Example 4",
-                    value: "Example 4",
+                    name: "Example 4".to_string(),
+                    value: "Example 4".to_string(),
                     inline: false,
                 }
             ]);
@@ -492,5 +575,38 @@ mod tests {
         let result = webhook.send().await;
 
         assert!(result.is_ok());
+    }
+    #[cfg(feature = "queue")]
+    #[tokio::test]
+    async fn test_queue() {
+        use crate::queue::WebhookQueue;
+        use std::collections::VecDeque;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let queue = WebhookQueue::new();
+
+        let webhook_url = env::var("WEBHOOK").unwrap();
+
+        let webhooks = Arc::clone(&queue.webhooks);
+        for i in 0..5 {
+            let webhooks = Arc::clone(&webhooks);
+            let embed = Embed::new().set_title("Example");
+            let webhook = Webhook::new(&webhook_url).add_embed(embed);
+
+            WebhookQueue::enqueue(webhooks, webhook).await;
+        }
+
+        {
+            let webhooks = Arc::clone(&webhooks);
+            let webhooks = webhooks.lock().await;
+            assert_eq!(webhooks.len(), 5, "Len is not 5, {}", webhooks.len());
+        }
+
+        queue.start().await;
+
+        let webhooks = Arc::clone(&webhooks);
+        let webhooks = webhooks.lock().await;
+        assert!(webhooks.is_empty(), "Webhooks not empty, {}", webhooks.len())
     }
 }
