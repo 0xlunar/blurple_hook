@@ -181,6 +181,11 @@ impl Webhook {
         self.embeds.push(embed);
         self
     }
+
+    pub fn add_embeds(mut self, embeds: &mut Vec<Embed>) -> Self {
+        self.embeds.append(embeds);
+        self
+    }
     pub async fn send(&self) -> anyhow::Result<()> {
         let client = reqwest::Client::new();
 
