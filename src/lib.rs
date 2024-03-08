@@ -145,9 +145,9 @@ struct Author {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Field {
-    name: String,
-    value: String,
-    inline: bool,
+    pub name: String,
+    pub value: String,
+    pub inline: bool,
 }
 pub enum ColourType<S: AsRef<str>> {
     Hex(S),
