@@ -265,7 +265,7 @@ impl Embed {
                 let mut hash = 0;
                 let chars = seed.as_ref().chars();
                 for char in chars {
-                    hash = u32::from(char) + ((hash << 5) - 5);
+                    hash = u32::from(char) + ((hash << 5) - hash);
                 }
 
                 let hex = (hash & 0x00FFFFFF).to_string().to_uppercase();
