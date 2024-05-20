@@ -152,6 +152,7 @@ pub struct Field {
 pub enum ColourType<S: AsRef<str>> {
     Hex(S),
     Integer(usize),
+    FromSeed(S)
 }
 
 impl Webhook {
@@ -259,6 +260,17 @@ impl Embed {
             )
                 .unwrap_or(10066329),
             ColourType::Integer(int) => int,
+            ColourType::FromSeed(seed) => {
+                // ported from https://stackoverflow.com/a/3426956
+                let mut hash = 0;
+                let chars = seed.as_ref().chars();
+                for char in chars {
+                    hash = u32::from(char) + ((hash << 5) - 5);
+                }
+
+                let hex = (hash & 0x00FFFFFF).to_string().to_uppercase();
+                return self.set_colour(ColourType::Hex(hex))
+            }
         };
 
         self.color = Some(colour);
