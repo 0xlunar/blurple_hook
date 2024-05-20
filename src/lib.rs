@@ -3,6 +3,8 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::usize;
 use anyhow::format_err;
+use sha1::{Sha1, Digest};
+use sha1::digest::Update;
 
 #[cfg(feature = "queue")]
 pub mod queue {
@@ -261,15 +263,11 @@ impl Embed {
                 .unwrap_or(10066329),
             ColourType::Integer(int) => int,
             ColourType::FromSeed(seed) => {
-                // ported from https://stackoverflow.com/a/3426956
-                let mut hash = 0;
-                let chars = seed.as_ref().chars();
-                for char in chars {
-                    hash = u32::from(char) + ((hash << 5) - hash);
-                }
-
-                let hex = (hash & 0x00FFFFFF).to_string().to_uppercase();
-                return self.set_colour(ColourType::Hex(hex))
+                let mut hasher = Sha1::new();
+                hasher.update(seed.as_ref().as_bytes());
+                let result = hasher.finalize();
+                let encoded = format!("#{}", &hex::encode(result)[0..6]);
+                return self.set_colour(ColourType::Hex(encoded))
             }
         };
 

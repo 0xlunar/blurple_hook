@@ -18,3 +18,5 @@ serde = { version = "1.0.196", features = ["derive"] }
 serde_json = "1.0.112"
 anyhow = "1.0.79"
 tokio = { version = "1.35.1", features = ["full"], optional = true }
+sha1 = "0.10.6"
+hex = "0.4.3"
