@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::usize;
 use anyhow::format_err;
 use sha1::{Sha1, Digest};
-use sha1::digest::Update;
 
 #[cfg(feature = "queue")]
 pub mod queue {
