@@ -16,13 +16,13 @@ use blurple_hook::{Webhook, Embed, Field, ColourType};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut webhook = Webhook::new("https://discord.com/webhook/")
+    let webhook = Webhook::new("https://discord.com/webhook/")
             .set_username("Blurple Hook")
             .set_content("Example Content");
     
-    let mut embed = Embed::new()
+    let embed = Embed::new()
             .set_title("Example")
-            .set_timestamp()
+            .set_timestamp(None)
             .set_url("https://example.com/")
             .set_colour(ColourType::Hex("#5865F2"))
             .add_fields(vec![
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             ]);
     
-    webhook.add_embed(embed);
+    let webhook = webhook.add_embed(embed);
     webhook.send().await?;
     
     Ok(())
