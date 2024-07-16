@@ -1,7 +1,6 @@
 use chrono::prelude::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::usize;
 use anyhow::format_err;
 use sha1::{Sha1, Digest};
 
@@ -188,6 +187,8 @@ impl Webhook {
         self.embeds.append(embeds);
         self
     }
+
+    #[cfg(not(feature = "retry"))]
     pub async fn send(&self) -> anyhow::Result<()> {
         let client = reqwest::Client::new();
 
@@ -203,6 +204,46 @@ impl Webhook {
         match resp.status() {
             StatusCode::NO_CONTENT | StatusCode::OK => {
                 Ok(())
+            },
+            _ => {
+                let body = resp.text().await.unwrap_or(String::from(""));
+                Err(format_err!("Failed to send request, {}", body))
+            }
+        }
+    }
+
+
+    #[cfg(feature = "retry")]
+    #[async_recursion::async_recursion]
+    pub async fn send(&self) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+
+        let body = serde_json::to_string(self).unwrap();
+
+        let resp = client
+            .post(format!("{}?wait=true", &self.webhook_url))
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+
+        match resp.status() {
+            StatusCode::NO_CONTENT | StatusCode::OK => {
+                Ok(())
+            },
+            StatusCode::TOO_MANY_REQUESTS => {
+                use std::time::Duration;
+                use tokio::time::{Instant, sleep_until};
+                let retry_after = match resp.headers().get("Retry-After") {
+                    Some(header) => {
+                        let str = header.to_str().unwrap_or("5");
+                        str.parse::<u64>().unwrap_or(5)
+                    },
+                    None => return Err(format_err!("Missing \"Retry After\" header"))
+                };
+                log::info!("Webhook rate limited, retrying in {} seconds", retry_after);
+                sleep_until(Instant::now() + Duration::from_secs(retry_after)).await;
+                self.send().await
             },
             _ => {
                 let body = resp.text().await.unwrap_or(String::from(""));

@@ -1,6 +1,6 @@
 [package]
 name = "blurple_hook"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 description = "Discord webhook implementation in Rust"
 license = "WTFPL"
@@ -8,15 +8,18 @@ repository = "https://github.com/0xlunar/blurple_hook"
 
 [features]
 queue = ["dep:tokio"]
+retry = ["dep:tokio", "dep:async-recursion", "dep:log"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4.33"
-reqwest = "0.11.23"
-serde = { version = "1.0.196", features = ["derive"] }
-serde_json = "1.0.112"
-anyhow = "1.0.79"
-tokio = { version = "1.35.1", features = ["full"], optional = true }
+chrono = "0.4.38"
+reqwest = "0.12.5"
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
+anyhow = "1.0.86"
+tokio = { version = "1.38.0", features = ["full"], optional = true }
 sha1 = "0.10.6"
 hex = "0.4.3"
+async-recursion = { version = "1.1.1", optional = true }
+log = { version = "0.4.22", optional = true }
