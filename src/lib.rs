@@ -241,7 +241,7 @@ impl Webhook {
                     },
                     None => return Err(format_err!("Missing \"Retry After\" header"))
                 };
-                log::info!("Webhook rate limited, retrying in {} seconds", retry_after);
+                log::warn!("Webhook rate limited, retrying in {} seconds", retry_after);
                 sleep_until(Instant::now() + Duration::from_secs(retry_after)).await;
                 self.send().await
             },
