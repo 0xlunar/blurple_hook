@@ -1,8 +1,13 @@
 use chrono::prelude::{DateTime, Utc};
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use anyhow::format_err;
 use sha1::{Sha1, Digest};
+
+#[cfg(feature = "reqwest")]
+use reqwest as reqwest;
+
+#[cfg(all(feature = "rquest", not(feature = "reqwest")))]
+use rquest as reqwest;
 
 #[cfg(feature = "queue")]
 pub mod queue {
@@ -202,7 +207,7 @@ impl Webhook {
             .await?;
 
         match resp.status() {
-            StatusCode::NO_CONTENT | StatusCode::OK => {
+            reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::OK => {
                 Ok(())
             },
             _ => {
@@ -228,10 +233,10 @@ impl Webhook {
             .await?;
 
         match resp.status() {
-            StatusCode::NO_CONTENT | StatusCode::OK => {
+            reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::OK => {
                 Ok(())
             },
-            StatusCode::TOO_MANY_REQUESTS => {
+            reqwest::StatusCode::TOO_MANY_REQUESTS => {
                 use std::time::Duration;
                 use tokio::time::{Instant, sleep_until};
                 let retry_after = match resp.headers().get("Retry-After") {
