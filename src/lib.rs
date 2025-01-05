@@ -239,15 +239,15 @@ impl Webhook {
             reqwest::StatusCode::TOO_MANY_REQUESTS => {
                 use std::time::Duration;
                 use tokio::time::{Instant, sleep_until};
-                let retry_after = match resp.headers().get("Retry-After") {
+                let retry_after = match resp.headers().get("x-ratelimit-reset-after") {
                     Some(header) => {
-                        let str = header.to_str().unwrap_or("5");
-                        str.parse::<u64>().unwrap_or(5)
+                        let str = header.to_str().unwrap_or("5.00");
+                        str.parse::<f64>().unwrap_or(5.00)
                     },
                     None => return Err(format_err!("Missing \"Retry After\" header"))
                 };
                 log::warn!("Webhook rate limited, retrying in {} seconds", retry_after);
-                sleep_until(Instant::now() + Duration::from_secs(retry_after)).await;
+                sleep_until(Instant::now() + Duration::from_secs_f64(retry_after)).await;
                 self.send().await
             },
             _ => {

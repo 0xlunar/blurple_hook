@@ -1,6 +1,6 @@
 [package]
 name = "blurple_hook"
-version = "0.3.9"
+version = "0.3.10"
 edition = "2021"
 description = "Discord webhook implementation in Rust"
 license = "WTFPL"
@@ -26,4 +26,5 @@ sha1 = "0.10.6"
 hex = "0.4.3"
 async-recursion = { version = "1.1.1", optional = true }
 log = { version = "0.4.22", optional = true }
-rquest = { version = "1.1.0", optional = true }
+#rquest = { version = "0.32.1", optional = true }
+rquest = { version = "1.3.3", optional = true }
