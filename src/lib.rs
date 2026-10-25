@@ -6,8 +6,8 @@ use sha1::{Sha1, Digest};
 #[cfg(feature = "reqwest")]
 use reqwest as reqwest;
 
-#[cfg(all(feature = "rquest", not(feature = "reqwest")))]
-use rquest as reqwest;
+#[cfg(all(feature = "wreq", not(feature = "reqwest")))]
+use wreq as reqwest;
 
 #[cfg(feature = "queue")]
 pub mod queue {
